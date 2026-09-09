@@ -278,7 +278,7 @@ function Section({
   );
 }
 
-function Field({ label, value }: { label: string; value?: React.ReactNode }) {
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -452,7 +452,13 @@ function LeadDetail({ row }: { row: LeadRow }) {
   );
 }
 
-function PrivacyFlag({ label, value }: { label: string; value?: boolean }) {
+function PrivacyFlag({
+  label,
+  value,
+}: {
+  label: string;
+  value: boolean | undefined;
+}) {
   if (value == null) return null;
   return (
     <span
