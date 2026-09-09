@@ -38,7 +38,10 @@ export const Route = createFileRoute("/api/public/ingest")({
           return json({ error: "json_non_valido" }, 400);
         }
 
-        if (typeof record.conversation_id !== "string" || !record.conversation_id) {
+        if (
+          typeof record["conversation_id"] !== "string" ||
+          !record["conversation_id"]
+        ) {
           return json({ error: "conversation_id_mancante" }, 400);
         }
 
@@ -48,8 +51,8 @@ export const Route = createFileRoute("/api/public/ingest")({
         );
         const { error } = await supabaseAdmin.from("leads").upsert(
           {
-            conversation_id: record.conversation_id,
-            payload: record,
+            conversation_id: record["conversation_id"],
+            payload: record as unknown as object,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "conversation_id" },
