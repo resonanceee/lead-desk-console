@@ -49,10 +49,40 @@ export const Route = createFileRoute("/api/public/ingest")({
         const { supabaseAdmin } = await import(
           "@/integrations/supabase/client.server"
         );
+
+        // Ponytail: merge per top-level section, so a partial re-save (dropped
+        // call resumed, final save with only deltas) can never wipe fields the
+        // caller already gave. Sections present in the new record win.
+        const conversationId = record["conversation_id"] as string;
+        const { data: existing } = await supabaseAdmin
+          .from("leads")
+          .select("payload")
+          .eq("conversation_id", conversationId)
+          .maybeSingle();
+        let merged: Record<string, unknown> = record;
+        const prev = existing?.payload as Record<string, unknown> | null;
+        if (prev && typeof prev === "object") {
+          merged = { ...prev, ...record };
+          // lead/readiness sub-objects: merge one level deep too (nulls in the
+          // new record DO overwrite — that's the opt-out wipe case)
+          for (const k of Object.keys(prev)) {
+            if (
+              k in record &&
+              prev[k] && typeof prev[k] === "object" && !Array.isArray(prev[k]) &&
+              record[k] && typeof record[k] === "object" && !Array.isArray(record[k])
+            ) {
+              merged[k] = {
+                ...(prev[k] as object),
+                ...(record[k] as object),
+              };
+            }
+          }
+        }
+
         const { error } = await supabaseAdmin.from("leads").upsert(
           {
-            conversation_id: record["conversation_id"],
-            payload: record as any,
+            conversation_id: conversationId,
+            payload: merged as any,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "conversation_id" },
@@ -69,14 +99,14 @@ export const Route = createFileRoute("/api/public/ingest")({
         let copia = "non configurata";
         if (HTP_INGEST_URL && HTP_INGEST_TOKEN) {
           try {
-            const res = await fetch(HTP_INGEST_URL, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Ingest-Token": HTP_INGEST_TOKEN,
-              },
-              body: JSON.stringify(record),
-            });
+          const res = await fetch(HTP_INGEST_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Ingest-Token": HTP_INGEST_TOKEN,
+            },
+            body: JSON.stringify(merged),
+          });
             copia = res.ok ? "inviata" : `rifiutata (${res.status})`;
             if (!res.ok)
               console.error(
