@@ -52,7 +52,7 @@ export const Route = createFileRoute("/api/public/ingest")({
         const { error } = await supabaseAdmin.from("leads").upsert(
           {
             conversation_id: record["conversation_id"],
-            payload: record as unknown as import("@supabase/supabase-js").Json,
+            payload: record as any,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "conversation_id" },
