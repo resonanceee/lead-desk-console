@@ -8,20 +8,20 @@ function nextAction(p?: LeadPayload): { label: string; tone: string } {
   const booked = p?.appointment?.status === "booked" || p?.appointment?.status === "confermato";
   const blocker = p?.readiness?.blocker;
   if (p?.privacy?.opt_out || p?.outcome === "opt_out")
-    return { label: "NON CONTATTARE", tone: "text-red-700" };
+    return { label: "DO NOT CONTACT", tone: "text-red-700" };
   switch (cls) {
     case "pronto_a_mandato":
       return booked
-        ? { label: "Prepara visita", tone: "text-green-700" }
-        : { label: "Prenotare visita", tone: "text-amber-700" };
+        ? { label: "Prepare visit", tone: "text-green-700" }
+        : { label: "Book visit", tone: "text-amber-700" };
     case "in_valutazione":
-      return { label: "Ricontattare", tone: "text-amber-700" };
+      return { label: "Call back", tone: "text-amber-700" };
     case "vincolato":
-      return { label: `Richiamare dopo: ${blocker ?? "vincolo"}`, tone: "text-orange-700" };
+      return { label: `Call back after: ${blocker ?? "constraint"}`, tone: "text-orange-700" };
     case "esplorativo":
-      return { label: "Nessuna azione urgente", tone: "text-gray-500" };
+      return { label: "No urgent action", tone: "text-gray-500" };
     case "non_lavorabile":
-      return { label: "Archiviare", tone: "text-gray-500" };
+      return { label: "Archive", tone: "text-gray-500" };
     default:
       return { label: "—", tone: "text-gray-400" };
   }
@@ -105,35 +105,35 @@ type LeadRow = {
 
 const READINESS_STYLES: Record<string, { label: string; className: string }> = {
   pronto_a_mandato: {
-    label: "Pronto a mandato",
+    label: "Ready to sign",
     className: "bg-green-100 text-green-800 border-green-300",
   },
   in_valutazione: {
-    label: "In valutazione",
+    label: "Evaluating",
     className: "bg-yellow-100 text-yellow-800 border-yellow-300",
   },
   vincolato: {
-    label: "Vincolato",
+    label: "Constrained",
     className: "bg-orange-100 text-orange-800 border-orange-300",
   },
   esplorativo: {
-    label: "Esplorativo",
+    label: "Exploratory",
     className: "bg-gray-100 text-gray-700 border-gray-300",
   },
   non_lavorabile: {
-    label: "Non lavorabile",
+    label: "Not workable",
     className: "bg-red-100 text-red-800 border-red-300",
   },
 };
 
 const APPOINTMENT_LABELS: Record<string, string> = {
-  booked: "Fissato",
-  not_booked: "Non fissato",
-  confermato: "Confermato",
-  da_fissare: "Da fissare",
-  non_fissato: "Non fissato",
-  annullato: "Annullato",
-  completato: "Completato",
+  booked: "Booked",
+  not_booked: "Not booked",
+  confermato: "Booked",
+  da_fissare: "To book",
+  non_fissato: "Not booked",
+  annullato: "Cancelled",
+  completato: "Completed",
 };
 
 const eur = new Intl.NumberFormat("it-IT", {
@@ -142,7 +142,7 @@ const eur = new Intl.NumberFormat("it-IT", {
   maximumFractionDigits: 0,
 });
 
-const dateTimeFmt = new Intl.DateTimeFormat("it-IT", {
+const dateTimeFmt = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "short",
   year: "numeric",
@@ -154,12 +154,12 @@ function saleProjectLines(sp?: SaleProject): string[] {
   if (!sp) return [];
   if (typeof sp === "string") return [sp];
   const lines: string[] = [];
-  if (sp.reason) lines.push(`Motivo: ${sp.reason}`);
-  if (sp.next_step) lines.push(`Prossimo passo: ${sp.next_step}`);
+  if (sp.reason) lines.push(`Reason: ${sp.reason}`);
+  if (sp.next_step) lines.push(`Next step: ${sp.next_step}`);
   const flags: string[] = [];
-  if (sp.already_found_new_home) flags.push("casa nuova già trovata");
-  if (sp.other_agency_mandate) flags.push("mandato con altra agenzia");
-  if (sp.tried_selling_alone) flags.push("ha provato a vendere da solo");
+  if (sp.already_found_new_home) flags.push("new home already found");
+  if (sp.other_agency_mandate) flags.push("mandate with another agency");
+  if (sp.tried_selling_alone) flags.push("tried selling on their own");
   if (flags.length) lines.push(flags.join(" · "));
   return lines;
 }
@@ -190,18 +190,18 @@ function formatSlot(slot?: string | null) {
 
 export const Route = createFileRoute("/")({
   head: () => ({
-    meta: [
-      { title: "Console Lead Immobiliari" },
+      meta: [
+      { title: "Lead Console — Voice Front Desk" },
       {
         name: "description",
         content:
-          "Console interna per l'agente immobiliare: coda e schede dei lead raccolti dal front desk vocale.",
+          "Internal console for the estate agent: queue and cards of the leads collected by the voice front desk.",
       },
-      { property: "og:title", content: "Console Lead Immobiliari" },
+      { property: "og:title", content: "Lead Console — Voice Front Desk" },
       {
         property: "og:description",
         content:
-          "Console interna per l'agente immobiliare: coda e schede dei lead raccolti dal front desk vocale.",
+          "Internal console for the estate agent: queue and cards of the leads collected by the voice front desk.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -237,13 +237,12 @@ function Index() {
       <header className="flex items-center justify-between border-b px-5 py-3">
         <div>
           <h1 className="text-base font-semibold tracking-tight">
-            Console lead — Front desk vocale
+            Lead console — Voice front desk
           </h1>
           <p className="text-xs text-muted-foreground">
-            {leads ? `${leads.length} lead in coda` : "Caricamento…"} ·
-            aggiornata alle{" "}
+            {leads ? `${leads.length} leads in queue` : "Loading…"} · updated at{" "}
             {dataUpdatedAt
-              ? new Date(dataUpdatedAt).toLocaleTimeString("it-IT", {
+              ? new Date(dataUpdatedAt).toLocaleTimeString("en-GB", {
                   hour: "2-digit",
                   minute: "2-digit",
                 })
@@ -256,7 +255,7 @@ function Index() {
             onChange={(e) => setClassFilter(e.target.value)}
             className="rounded-md border px-2 py-1.5 text-sm"
           >
-            <option value="">Tutte le classi</option>
+            <option value="">All classes</option>
             {Object.keys(READINESS_STYLES).map((k) => (
               <option key={k} value={k}>{READINESS_STYLES[k].label}</option>
             ))}
@@ -265,7 +264,7 @@ function Index() {
             onClick={() => refetch()}
             className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent"
           >
-            Aggiorna
+            Refresh
           </button>
         </div>
       </header>
@@ -275,17 +274,17 @@ function Index() {
         <aside className="w-96 shrink-0 overflow-y-auto border-r">
           {isLoading && (
             <p className="p-4 text-sm text-muted-foreground">
-              Caricamento dei lead…
+              Loading leads…
             </p>
           )}
           {error && (
             <p className="p-4 text-sm text-destructive">
-              Errore nel caricamento dei lead.
+              Error loading leads.
             </p>
           )}
           {filtered?.length === 0 && (
             <p className="p-4 text-sm text-muted-foreground">
-              Nessun lead presente.
+              No leads yet.
             </p>
           )}
           <ul>
@@ -302,14 +301,14 @@ function Index() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm font-medium">
-                        {row.payload?.lead?.name ?? "Senza nome"}
+                        {row.payload?.lead?.name ?? "No name"}
                       </span>
                       {readinessBadge(row.payload?.readiness?.class)}
                     </div>
                     <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
                       <span>{row.payload?.lead?.city ?? "—"}</span>
                       <span>
-                        Appuntamento:{" "}
+                        Appointment:{" "}
                         {appointmentLabel(row.payload?.appointment?.status)}
                       </span>
                     </div>
@@ -317,7 +316,7 @@ function Index() {
                       {nextAction(row.payload).label}
                     </div>
                     <div className="mt-0.5 text-[11px] text-muted-foreground/70">
-                      Aggiornato:{" "}
+                      Updated:{" "}
                       {dateTimeFmt.format(new Date(row.updated_at))}
                     </div>
                   </button>
@@ -334,7 +333,7 @@ function Index() {
           ) : (
             !isLoading && (
               <p className="p-6 text-sm text-muted-foreground">
-                Seleziona un lead dalla coda.
+                Select a lead from the queue.
               </p>
             )
           )}
@@ -413,8 +412,8 @@ function TranscriptView({ transcript, evidence }: { transcript: string; evidence
       {quotes.length > 0 && (
         <p className="text-xs text-muted-foreground">
           {wasHighlighted.size === quotes.length
-            ? `${quotes.length} evidence evidenziate nel testo`
-            : `${wasHighlighted.size}/${quotes.length} evidence trovate nel testo`}
+            ? `${quotes.length} quotes highlighted`
+            : `${wasHighlighted.size}/${quotes.length} quotes found in transcript`}
         </p>
       )}
       <pre className="whitespace-pre-wrap rounded-md bg-muted/50 p-4 font-sans text-sm leading-relaxed">
@@ -459,7 +458,7 @@ function LeadDetail({ row }: { row: LeadRow }) {
       <div className="border-b px-6 py-5">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-semibold tracking-tight">
-            {l.name ?? "Senza nome"}
+            {l.name ?? "No name"}
           </h2>
           {readinessBadge(r?.class)}
           <span className={`ml-auto text-sm font-semibold ${nextAction(p).tone}`}>
@@ -475,19 +474,19 @@ function LeadDetail({ row }: { row: LeadRow }) {
         </p>
       </div>
 
-      <Section title="Pronto per la visita (lettura 2 minuti)">
+      <Section title="Pre-visit brief (2-minute read)">
         <dl className="grid grid-cols-1 gap-y-3 sm:grid-cols-2">
-          <Field label="Perché vende" value={sp?.reason ?? undefined} />
-          <Field label="Cosa succede dopo" value={sp?.next_step ?? undefined} />
+          <Field label="Why they sell" value={sp?.reason ?? undefined} />
+          <Field label="What happens next" value={sp?.next_step ?? undefined} />
           <Field
-            label="Tempi"
+            label="Timeline"
             value={
               r?.timeline_declared_months != null || r?.timeline_real_months != null
-                ? `dichiarati ${r?.timeline_declared_months ?? "?"} mesi · reali ${r?.timeline_real_months ?? (r?.blocker ? "non determinabili (vincolo)" : "?")}`
+                ? `declared ${r?.timeline_declared_months ?? "?"} months · real ${r?.timeline_real_months ?? (r?.blocker ? "not determinable (constraint)" : "?")}`
                 : undefined
             }
           />
-          <Field label="Vincolo" value={r?.blocker ?? "nessuno"} />
+          <Field label="Constraint" value={r?.blocker ?? "nessuno"} />
           <Field
             label="Appuntamento"
             value={
@@ -497,47 +496,47 @@ function LeadDetail({ row }: { row: LeadRow }) {
             }
           />
           <Field
-            label="Da chiedere per primo"
+            label="Ask first"
             value={
               r?.blocker
                 ? `Stato del vincolo: ${r.blocker}`
-                : "Conferma dati immobile e aspettative di prezzo"
+                : "Confirm property data and price expectations"
             }
           />
         </dl>
         {a?.reason && (
           <p className="mt-3 text-sm text-muted-foreground">
-            Motivo mancato appuntamento: {a.reason}
+            Why no booking: {a.reason}
           </p>
         )}
       </Section>
 
-      <Section title="Immobile">
+      <Section title="Property">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-          <Field label="Indirizzo" value={l.address} />
-          <Field label="Città" value={l.city} />
+          <Field label="Address" value={l.address} />
+          <Field label="City" value={l.city} />
           <Field
-            label="Superficie"
+            label="Floor area"
             value={l.sqm != null ? `${l.sqm} mq` : undefined}
           />
           <Field
-            label="Piano"
+            label="Floor"
             value={l.floor != null ? String(l.floor) : undefined}
           />
           <Field
-            label="Ascensore"
+            label="Elevator"
             value={
               l.elevator == null ? undefined : l.elevator ? "Sì" : "No"
             }
           />
-          <Field label="Condizioni" value={l.condition} />
-          <Field label="Classe energetica" value={l.energy_class} />
-          <Field label="Anno di costruzione" value={l.year_built} />
-          <Field label="Titolarità" value={l.ownership} />
+          <Field label="Condition" value={l.condition} />
+          <Field label="Energy class" value={l.energy_class} />
+          <Field label="Year built" value={l.year_built} />
+          <Field label="Ownership" value={l.ownership} />
         </dl>
       </Section>
 
-      <Section title="Valutazione">
+      <Section title="Valuation">
         <p className="text-lg font-semibold tabular-nums">
           {v?.low != null && v?.high != null
             ? `${eur.format(v.low)} – ${eur.format(v.high)}`
@@ -545,7 +544,7 @@ function LeadDetail({ row }: { row: LeadRow }) {
         </p>
         {v?.source && (
           <p className="mt-1 text-xs text-muted-foreground">
-            Fonte: {v.source}
+            Source: {v.source}
           </p>
         )}
         {v?.comparables && v.comparables.length > 0 && (
@@ -571,10 +570,10 @@ function LeadDetail({ row }: { row: LeadRow }) {
 
       <Section title="Readiness">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
-          <Field label="Classe" value={readinessBadge(r?.class)} />
-          <Field label="Progetto di vendita" value={<SaleProjectView sp={r?.sale_project} />} />
+          <Field label="Class" value={readinessBadge(r?.class)} />
+          <Field label="Sale project" value={<SaleProjectView sp={r?.sale_project} />} />
           <Field
-            label="Timeline dichiarata"
+            label="Declared timeline"
             value={
               r?.timeline_declared_months != null
                 ? `${r.timeline_declared_months} mesi`
@@ -582,14 +581,14 @@ function LeadDetail({ row }: { row: LeadRow }) {
             }
           />
           <Field
-            label="Timeline reale"
+            label="Real timeline"
             value={
               r?.timeline_real_months != null
                 ? `${r.timeline_real_months} mesi`
                 : undefined
             }
           />
-          <Field label="Blocco" value={r?.blocker ?? undefined} />
+          <Field label="Blocker" value={r?.blocker ?? undefined} />
         </dl>
         {r?.evidence && r.evidence.length > 0 && (
           <div className="mt-4 space-y-2">
@@ -604,12 +603,12 @@ function LeadDetail({ row }: { row: LeadRow }) {
                 <button
                   key={i}
                   onClick={() => transcriptRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                  title={inTranscript ? "Vai al punto nella trascrizione" : "Citazione non trovata nella trascrizione"}
+                  title={inTranscript ? "Jump to spot in transcript" : "Quote not found in transcript"}
                   className="block w-full cursor-pointer rounded-md border-l-2 border-primary/60 bg-muted/50 px-3 py-2 text-left text-sm italic transition hover:bg-muted"
                 >
                   “{e.quote}”
                   <span className="ml-2 text-xs not-italic text-muted-foreground">
-                    — turno {e.turn} · {inTranscript ? "evidenziata ↓" : "non trovata nella trascrizione"}
+                    — turn {e.turn} · {inTranscript ? "highlighted ↓" : "not found in transcript"}
                   </span>
                 </button>
               );
@@ -618,16 +617,16 @@ function LeadDetail({ row }: { row: LeadRow }) {
         )}
       </Section>
 
-      <Section title="Appuntamento">
+      <Section title="Appointment">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
-          <Field label="Stato" value={appointmentLabel(a?.status)} />
-          <Field label="Agente" value={a?.agent_id ?? undefined} />
+          <Field label="Status" value={appointmentLabel(a?.status)} />
+          <Field label="Agent" value={a?.agent_id ?? undefined} />
           <Field label="Slot" value={formatSlot(a?.slot) ?? undefined} />
-          <Field label="Motivo" value={a?.reason ?? undefined} />
+          <Field label="Reason" value={a?.reason ?? undefined} />
         </dl>
         {p?.outcome && (
           <p className="mt-3 text-sm">
-            <span className="text-xs text-muted-foreground">Esito: </span>
+            <span className="text-xs text-muted-foreground">Outcome: </span>
             <span className="font-medium">{p.outcome}</span>
           </p>
         )}
@@ -636,21 +635,21 @@ function LeadDetail({ row }: { row: LeadRow }) {
       <Section title="Privacy">
         <div className="flex flex-wrap gap-2 text-xs">
           <PrivacyFlag
-            label="Consenso al ricontatto"
+            label="Recontact consent"
             value={privacy?.consent ?? privacy?.consent_given}
           />
           <PrivacyFlag label="Opt-out" value={privacy?.opt_out} />
-          <PrivacyFlag label="Opt-out passato" value={privacy?.opt_out_history} />
+          <PrivacyFlag label="Past opt-out" value={privacy?.opt_out_history} />
           <PrivacyFlag
-            label="Consenso riconfermato"
+            label="Consent reconfirmed"
             value={privacy?.consent_reconfirmed}
           />
           <PrivacyFlag
-            label="Registrazione comunicata"
+            label="Recording disclosed"
             value={privacy?.recording_disclosed}
           />
           <PrivacyFlag
-            label="Consenso marketing"
+            label="Marketing consent"
             value={privacy?.marketing_opt_in}
           />
         </div>
@@ -660,18 +659,18 @@ function LeadDetail({ row }: { row: LeadRow }) {
             disabled={revoking}
             className="mt-3 rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
           >
-            {revoking ? "Revoca in corso…" : "Revoca consenso (opt-out)"}
+            {revoking ? "Revoking…" : "Revoke consent (opt-out)"}
           </button>
         )}
       </Section>
 
       <div ref={transcriptRef}>
-        <Section title="Trascrizione">
+        <Section title="Transcript">
           {p?.transcript ? (
             <TranscriptView transcript={p.transcript} evidence={r?.evidence} />
           ) : (
             <p className="text-sm text-muted-foreground">
-              Nessuna trascrizione disponibile.
+              No transcript available.
             </p>
           )}
         </Section>
