@@ -55,6 +55,32 @@ export const Route = createFileRoute("/api/public/ingest")({
         // caller already gave. Sections present in the new record win.
         const conversationId = record["conversation_id"] as string;
 
+        // Transcript fallback: se l'LLM non l'ha incluso nella scheda, lo
+        // recuperiamo dall'API ElevenLabs (stesso conversation_id). Non blocca
+        // il salvataggio: in caso di errore si prosegue senza.
+        const EL_KEY = process.env["ELEVENLABS_API_KEY"] ?? "";
+        if (!record["transcript"] && EL_KEY && conversationId.startsWith("conv_")) {
+          try {
+            const r = await fetch(
+              `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`,
+              { headers: { "xi-api-key": EL_KEY } },
+            );
+            if (r.ok) {
+              const conv = (await r.json()) as {
+                transcript?: Array<{ role?: string; message?: string | null }>;
+              };
+              const lines = (conv.transcript ?? [])
+                .filter((t) => t.message)
+                .map((t) =>
+                  `${t.role === "agent" ? "Operatore" : "Proprietario"}: ${t.message}`,
+                );
+              if (lines.length) record["transcript"] = lines.join("\n");
+            }
+          } catch (e) {
+            console.error("recupero transcript fallito:", String(e));
+          }
+        }
+
         // Opt-out is terminal: persona chiede di non essere ricontattata -> la
         // scheda conserva SOLO lo stato di opt-out, niente dati personali
         // raccolti prima. Nessun merge.
