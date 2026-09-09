@@ -4,7 +4,27 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 type Evidence = { quote: string; turn: number };
-type Comparable = { address: string; price: number; sqm: number };
+// real cards: {id, zone, sqm, sold_price, price_per_sqm, sold_at}; seed rows: {address, price, sqm}
+type Comparable = {
+  id?: string;
+  zone?: string;
+  sqm?: number;
+  sold_price?: number;
+  price_per_sqm?: number;
+  sold_at?: string;
+  address?: string;
+  price?: number;
+};
+// real cards: object; seed rows: plain string
+type SaleProject =
+  | string
+  | {
+      reason?: string | null;
+      next_step?: string | null;
+      already_found_new_home?: boolean;
+      other_agency_mandate?: boolean;
+      tried_selling_alone?: boolean;
+    };
 
 type LeadPayload = {
   lead: {
@@ -22,7 +42,7 @@ type LeadPayload = {
   };
   readiness?: {
     class?: string;
-    sale_project?: string;
+    sale_project?: SaleProject;
     timeline_declared_months?: number | null;
     timeline_real_months?: number | null;
     blocker?: string | null;
@@ -42,6 +62,10 @@ type LeadPayload = {
   };
   outcome?: string;
   privacy?: {
+    consent?: boolean;
+    opt_out?: boolean;
+    opt_out_history?: boolean;
+    consent_reconfirmed?: boolean;
     consent_given?: boolean;
     recording_disclosed?: boolean;
     marketing_opt_in?: boolean;
@@ -79,6 +103,8 @@ const READINESS_STYLES: Record<string, { label: string; className: string }> = {
 };
 
 const APPOINTMENT_LABELS: Record<string, string> = {
+  booked: "Fissato",
+  not_booked: "Non fissato",
   confermato: "Confermato",
   da_fissare: "Da fissare",
   non_fissato: "Non fissato",
@@ -99,6 +125,20 @@ const dateTimeFmt = new Intl.DateTimeFormat("it-IT", {
   hour: "2-digit",
   minute: "2-digit",
 });
+
+function saleProjectLines(sp?: SaleProject): string[] {
+  if (!sp) return [];
+  if (typeof sp === "string") return [sp];
+  const lines: string[] = [];
+  if (sp.reason) lines.push(`Motivo: ${sp.reason}`);
+  if (sp.next_step) lines.push(`Prossimo passo: ${sp.next_step}`);
+  const flags: string[] = [];
+  if (sp.already_found_new_home) flags.push("casa nuova già trovata");
+  if (sp.other_agency_mandate) flags.push("mandato con altra agenzia");
+  if (sp.tried_selling_alone) flags.push("ha provato a vendere da solo");
+  if (flags.length) lines.push(flags.join(" · "));
+  return lines;
+}
 
 function readinessBadge(cls?: string) {
   const style = READINESS_STYLES[cls ?? ""] ?? {
@@ -287,6 +327,18 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function SaleProjectView({ sp }: { sp?: SaleProject }) {
+  const lines = saleProjectLines(sp);
+  if (!lines.length) return <>—</>;
+  return (
+    <span className="block space-y-0.5 font-normal">
+      {lines.map((l, i) => (
+        <span key={i} className="block">{l}</span>
+      ))}
+    </span>
+  );
+}
+
 function LeadDetail({ row }: { row: LeadRow }) {
   const p = row.payload;
   const l = p?.lead ?? {};
@@ -351,14 +403,21 @@ function LeadDetail({ row }: { row: LeadRow }) {
         )}
         {v?.comparables && v.comparables.length > 0 && (
           <ul className="mt-3 space-y-1 text-sm">
-            {v.comparables.map((c, i) => (
-              <li key={i} className="flex justify-between gap-4">
-                <span className="text-muted-foreground">{c.address}</span>
-                <span className="tabular-nums">
-                  {eur.format(c.price)} · {c.sqm} mq
-                </span>
-              </li>
-            ))}
+            {v.comparables.map((c, i) => {
+              const where = c.address ?? `${c.zone ?? "—"}${c.id ? ` (${c.id})` : ""}`;
+              const price = c.sold_price ?? c.price;
+              return (
+                <li key={i} className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">{where}</span>
+                  <span className="tabular-nums">
+                    {price != null ? eur.format(price) : "—"}
+                    {c.sqm != null ? ` · ${c.sqm} mq` : ""}
+                    {c.price_per_sqm != null ? ` · ${eur.format(c.price_per_sqm)}/mq` : ""}
+                    {c.sold_at ? ` · ${c.sold_at}` : ""}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Section>
@@ -366,7 +425,7 @@ function LeadDetail({ row }: { row: LeadRow }) {
       <Section title="Readiness">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
           <Field label="Classe" value={readinessBadge(r?.class)} />
-          <Field label="Progetto di vendita" value={r?.sale_project} />
+          <Field label="Progetto di vendita" value={<SaleProjectView sp={r?.sale_project} />} />
           <Field
             label="Timeline dichiarata"
             value={
@@ -423,8 +482,14 @@ function LeadDetail({ row }: { row: LeadRow }) {
       <Section title="Privacy">
         <div className="flex flex-wrap gap-2 text-xs">
           <PrivacyFlag
-            label="Consenso al trattamento"
-            value={privacy?.consent_given}
+            label="Consenso al ricontatto"
+            value={privacy?.consent ?? privacy?.consent_given}
+          />
+          <PrivacyFlag label="Opt-out" value={privacy?.opt_out} />
+          <PrivacyFlag label="Opt-out passato" value={privacy?.opt_out_history} />
+          <PrivacyFlag
+            label="Consenso riconfermato"
+            value={privacy?.consent_reconfirmed}
           />
           <PrivacyFlag
             label="Registrazione comunicata"
