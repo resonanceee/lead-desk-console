@@ -443,14 +443,11 @@ function LeadDetail({ row }: { row: LeadRow }) {
 
   async function revokeConsent() {
     setRevoking(true);
-    const newPayload = {
-      ...(p as object),
-      privacy: { ...(privacy as object ?? {}), opt_out: true },
-    };
-    await supabase
-      .from("leads")
-      .update({ payload: newPayload, updated_at: new Date().toISOString() })
-      .eq("conversation_id", row.conversation_id);
+    await fetch("/api/public/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: row.conversation_id }),
+    });
     setRevoking(false);
     queryClient.invalidateQueries({ queryKey: ["leads"] });
   }
