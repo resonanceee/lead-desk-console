@@ -1,7 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+
+function nextAction(p?: LeadPayload): { label: string; tone: string } {
+  const cls = p?.readiness?.class ?? "";
+  const booked = p?.appointment?.status === "booked" || p?.appointment?.status === "confermato";
+  const blocker = p?.readiness?.blocker;
+  if (p?.privacy?.opt_out || p?.outcome === "opt_out")
+    return { label: "NON CONTATTARE", tone: "text-red-700" };
+  switch (cls) {
+    case "pronto_a_mandato":
+      return booked
+        ? { label: "Prepara visita", tone: "text-green-700" }
+        : { label: "Prenotare visita", tone: "text-amber-700" };
+    case "in_valutazione":
+      return { label: "Ricontattare", tone: "text-amber-700" };
+    case "vincolato":
+      return { label: `Richiamare dopo: ${blocker ?? "vincolo"}`, tone: "text-orange-700" };
+    case "esplorativo":
+      return { label: "Nessuna azione urgente", tone: "text-gray-500" };
+    case "non_lavorabile":
+      return { label: "Archiviare", tone: "text-gray-500" };
+    default:
+      return { label: "—", tone: "text-gray-400" };
+  }
+}
 
 type Evidence = { quote: string; turn: number };
 // real cards: {id, zone, sqm, sold_price, price_per_sqm, sold_at}; seed rows: {address, price, sqm}
@@ -201,8 +225,12 @@ function Index() {
   });
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [classFilter, setClassFilter] = useState<string>("");
+  const filtered = leads?.filter(
+    (l) => !classFilter || l.payload?.readiness?.class === classFilter,
+  );
   const selected =
-    leads?.find((l) => l.conversation_id === selectedId) ?? leads?.[0] ?? null;
+    filtered?.find((l) => l.conversation_id === selectedId) ?? filtered?.[0] ?? null;
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -222,12 +250,24 @@ function Index() {
               : "—"}
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent"
-        >
-          Aggiorna
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={classFilter}
+            onChange={(e) => setClassFilter(e.target.value)}
+            className="rounded-md border px-2 py-1.5 text-sm"
+          >
+            <option value="">Tutte le classi</option>
+            {Object.keys(READINESS_STYLES).map((k) => (
+              <option key={k} value={k}>{READINESS_STYLES[k].label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => refetch()}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-accent"
+          >
+            Aggiorna
+          </button>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -243,13 +283,13 @@ function Index() {
               Errore nel caricamento dei lead.
             </p>
           )}
-          {leads?.length === 0 && (
+          {filtered?.length === 0 && (
             <p className="p-4 text-sm text-muted-foreground">
               Nessun lead presente.
             </p>
           )}
           <ul>
-            {leads?.map((row) => {
+            {filtered?.map((row) => {
               const active =
                 row.conversation_id === selected?.conversation_id;
               return (
@@ -272,6 +312,9 @@ function Index() {
                         Appuntamento:{" "}
                         {appointmentLabel(row.payload?.appointment?.status)}
                       </span>
+                    </div>
+                    <div className={`mt-1 text-xs font-medium ${nextAction(row.payload).tone}`}>
+                      {nextAction(row.payload).label}
                     </div>
                     <div className="mt-0.5 text-[11px] text-muted-foreground/70">
                       Aggiornato:{" "}
@@ -339,13 +382,80 @@ function SaleProjectView({ sp }: { sp?: SaleProject }) {
   );
 }
 
+function TranscriptView({ transcript, evidence }: { transcript: string; evidence?: Evidence[] }) {
+  const quotes = (evidence ?? []).map((e) => e.quote).filter(Boolean);
+  // highlight every evidence quote occurrence (whitespace-tolerant)
+  let parts: Array<{ text: string; hit: boolean }> = [{ text: transcript, hit: false }];
+  const usedQuotes: string[] = [];
+  for (const q of quotes) {
+    if (usedQuotes.includes(q)) continue;
+    usedQuotes.push(q);
+    const next: typeof parts = [];
+    const norm = (s: string) => s.replace(/\s+/g, " ").toLowerCase();
+    for (const part of parts) {
+      if (part.hit) { next.push(part); continue; }
+      let rest = part.text;
+      for (;;) {
+        const idx = norm(rest).indexOf(norm(q));
+        if (idx === -1) break;
+        if (idx > 0) next.push({ text: rest.slice(0, idx), hit: false });
+        next.push({ text: rest.slice(idx, idx + q.length), hit: true });
+        rest = rest.slice(idx + q.length);
+      }
+      if (rest) next.push({ text: rest, hit: false });
+    }
+    parts = next;
+  }
+  const wasHighlighted = new Set<string>();
+  for (const part of parts) if (part.hit) wasHighlighted.add(part.text);
+  return (
+    <div className="space-y-3">
+      {quotes.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {wasHighlighted.size === quotes.length
+            ? `${quotes.length} evidence evidenziate nel testo`
+            : `${wasHighlighted.size}/${quotes.length} evidence trovate nel testo`}
+        </p>
+      )}
+      <pre className="whitespace-pre-wrap rounded-md bg-muted/50 p-4 font-sans text-sm leading-relaxed">
+        {parts.map((p, i) =>
+          p.hit ? (
+            <mark key={i} className="rounded-sm bg-yellow-200 px-0.5">{p.text}</mark>
+          ) : (
+            <span key={i}>{p.text}</span>
+          ),
+        )}
+      </pre>
+    </div>
+  );
+}
+
 function LeadDetail({ row }: { row: LeadRow }) {
+  const queryClient = useQueryClient();
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const [revoking, setRevoking] = useState(false);
   const p = row.payload;
   const l = p?.lead ?? {};
   const r = p?.readiness;
   const v = p?.valuation;
   const a = p?.appointment;
   const privacy = p?.privacy;
+
+  async function revokeConsent() {
+    setRevoking(true);
+    const newPayload = {
+      ...(p as object),
+      privacy: { ...(privacy as object ?? {}), opt_out: true },
+    };
+    await supabase
+      .from("leads")
+      .update({ payload: newPayload, updated_at: new Date().toISOString() })
+      .eq("conversation_id", row.conversation_id);
+    setRevoking(false);
+    queryClient.invalidateQueries({ queryKey: ["leads"] });
+  }
+
+  const sp = r?.sale_project && typeof r.sale_project === "object" ? r.sale_project : null;
 
   return (
     <div>
@@ -355,6 +465,9 @@ function LeadDetail({ row }: { row: LeadRow }) {
             {l.name ?? "Senza nome"}
           </h2>
           {readinessBadge(r?.class)}
+          <span className={`ml-auto text-sm font-semibold ${nextAction(p).tone}`}>
+            {nextAction(p).label}
+          </span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {l.address ?? "—"}, {l.city ?? "—"} · {l.phone ?? "—"}
@@ -364,6 +477,43 @@ function LeadDetail({ row }: { row: LeadRow }) {
           {dateTimeFmt.format(new Date(row.updated_at))}
         </p>
       </div>
+
+      <Section title="Pronto per la visita (lettura 2 minuti)">
+        <dl className="grid grid-cols-1 gap-y-3 sm:grid-cols-2">
+          <Field label="Perché vende" value={sp?.reason ?? undefined} />
+          <Field label="Cosa succede dopo" value={sp?.next_step ?? undefined} />
+          <Field
+            label="Tempi"
+            value={
+              r?.timeline_declared_months != null || r?.timeline_real_months != null
+                ? `dichiarati ${r?.timeline_declared_months ?? "?"} mesi · reali ${r?.timeline_real_months ?? (r?.blocker ? "non determinabili (vincolo)" : "?")}`
+                : undefined
+            }
+          />
+          <Field label="Vincolo" value={r?.blocker ?? "nessuno"} />
+          <Field
+            label="Appuntamento"
+            value={
+              a?.status
+                ? `${appointmentLabel(a.status)}${a.agent_id ? ` · ${a.agent_id}` : ""}${a.slot ? ` · ${formatSlot(a.slot)}` : ""}`
+                : undefined
+            }
+          />
+          <Field
+            label="Da chiedere per primo"
+            value={
+              r?.blocker
+                ? `Stato del vincolo: ${r.blocker}`
+                : "Conferma dati immobile e aspettative di prezzo"
+            }
+          />
+        </dl>
+        {a?.reason && (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Motivo mancato appuntamento: {a.reason}
+          </p>
+        )}
+      </Section>
 
       <Section title="Immobile">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -449,17 +599,24 @@ function LeadDetail({ row }: { row: LeadRow }) {
             <p className="text-xs font-medium text-muted-foreground">
               Evidence
             </p>
-            {r.evidence.map((e, i) => (
-              <blockquote
-                key={i}
-                className="rounded-md border-l-2 bg-muted/50 px-3 py-2 text-sm italic"
-              >
-                “{e.quote}”
-                <span className="ml-2 text-xs not-italic text-muted-foreground">
-                  — turno {e.turn}
-                </span>
-              </blockquote>
-            ))}
+            {r.evidence.map((e, i) => {
+              const inTranscript = !!p?.transcript && !!e.quote &&
+                p.transcript.replace(/\s+/g, " ").toLowerCase()
+                  .includes(e.quote.replace(/\s+/g, " ").toLowerCase());
+              return (
+                <button
+                  key={i}
+                  onClick={() => transcriptRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                  title={inTranscript ? "Vai al punto nella trascrizione" : "Citazione non trovata nella trascrizione"}
+                  className="block w-full cursor-pointer rounded-md border-l-2 border-primary/60 bg-muted/50 px-3 py-2 text-left text-sm italic transition hover:bg-muted"
+                >
+                  “{e.quote}”
+                  <span className="ml-2 text-xs not-italic text-muted-foreground">
+                    — turno {e.turn} · {inTranscript ? "evidenziata ↓" : "non trovata nella trascrizione"}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
       </Section>
@@ -500,19 +657,28 @@ function LeadDetail({ row }: { row: LeadRow }) {
             value={privacy?.marketing_opt_in}
           />
         </div>
-      </Section>
-
-      <Section title="Trascrizione">
-        {p?.transcript ? (
-          <pre className="whitespace-pre-wrap rounded-md bg-muted/50 p-4 font-sans text-sm leading-relaxed">
-            {p.transcript}
-          </pre>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Nessuna trascrizione disponibile.
-          </p>
+        {!privacy?.opt_out && (
+          <button
+            onClick={revokeConsent}
+            disabled={revoking}
+            className="mt-3 rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            {revoking ? "Revoca in corso…" : "Revoca consenso (opt-out)"}
+          </button>
         )}
       </Section>
+
+      <div ref={transcriptRef}>
+        <Section title="Trascrizione">
+          {p?.transcript ? (
+            <TranscriptView transcript={p.transcript} evidence={r?.evidence} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Nessuna trascrizione disponibile.
+            </p>
+          )}
+        </Section>
+      </div>
     </div>
   );
 }
