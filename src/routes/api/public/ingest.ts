@@ -54,6 +54,42 @@ export const Route = createFileRoute("/api/public/ingest")({
         // call resumed, final save with only deltas) can never wipe fields the
         // caller already gave. Sections present in the new record win.
         const conversationId = record["conversation_id"] as string;
+
+        // Opt-out is terminal: persona chiede di non essere ricontattata -> la
+        // scheda conserva SOLO lo stato di opt-out, niente dati personali
+        // raccolti prima. Nessun merge.
+        const HTP_URL = process.env["HTP_INGEST_URL"] ?? "";
+        const HTP_TOKEN = process.env["HTP_INGEST_TOKEN"] ?? "";
+        const priv = record["privacy"] as Record<string, unknown> | undefined;
+        const isOptOut = record["outcome"] === "opt_out" || priv?.["opt_out"] === true;
+        if (isOptOut) {
+          await supabaseAdmin.from("leads").upsert(
+            {
+              conversation_id: conversationId,
+              payload: record as any,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "conversation_id" },
+          );
+          let copia = "non configurata";
+          if (HTP_URL && HTP_TOKEN) {
+            try {
+              const res = await fetch(HTP_URL, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Ingest-Token": HTP_TOKEN,
+                },
+                body: JSON.stringify(record),
+              });
+              copia = res.ok ? "inviata" : `rifiutata (${res.status})`;
+            } catch {
+              copia = "non riuscita";
+            }
+          }
+          return json({ ok: true, copia_alla_piattaforma: copia });
+        }
+
         const { data: existing } = await supabaseAdmin
           .from("leads")
           .select("payload")
