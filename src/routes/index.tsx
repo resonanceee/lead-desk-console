@@ -85,6 +85,7 @@ type LeadPayload = {
     reason?: string | null;
   };
   outcome?: string;
+  transcript_en?: string;
   privacy?: {
     consent?: boolean;
     opt_out?: boolean;
@@ -381,50 +382,59 @@ function SaleProjectView({ sp }: { sp?: SaleProject }) {
   );
 }
 
-function TranscriptView({ transcript, evidence }: { transcript: string; evidence?: Evidence[] }) {
+function quoteHighlight(text: string, quote: string): [boolean, number, number] {
+  const norm = (s: string) => s.replace(/\s+/g, " ").toLowerCase();
+  const idx = norm(text).indexOf(norm(quote));
+  return [idx !== -1, idx, quote.length];
+}
+
+function TranscriptView({
+  transcript,
+  transcriptEn,
+  evidence,
+}: {
+  transcript: string;
+  transcriptEn?: string;
+  evidence?: Evidence[];
+}) {
   const quotes = (evidence ?? []).map((e) => e.quote).filter(Boolean);
-  // highlight every evidence quote occurrence (whitespace-tolerant)
-  let parts: Array<{ text: string; hit: boolean }> = [{ text: transcript, hit: false }];
-  const usedQuotes: string[] = [];
-  for (const q of quotes) {
-    if (usedQuotes.includes(q)) continue;
-    usedQuotes.push(q);
-    const next: typeof parts = [];
-    const norm = (s: string) => s.replace(/\s+/g, " ").toLowerCase();
-    for (const part of parts) {
-      if (part.hit) { next.push(part); continue; }
-      let rest = part.text;
-      for (;;) {
-        const idx = norm(rest).indexOf(norm(q));
-        if (idx === -1) break;
-        if (idx > 0) next.push({ text: rest.slice(0, idx), hit: false });
-        next.push({ text: rest.slice(idx, idx + q.length), hit: true });
-        rest = rest.slice(idx + q.length);
-      }
-      if (rest) next.push({ text: rest, hit: false });
-    }
-    parts = next;
-  }
-  const wasHighlighted = new Set<string>();
-  for (const part of parts) if (part.hit) wasHighlighted.add(part.text);
+  const leftLines = transcript.split("\n").filter((l) => l.trim());
+  const rightLines = (transcriptEn ?? "").split("\n").filter((l) => l.trim());
+  const hasEn = rightLines.length > 0 && transcriptEn !== transcript;
+  const rows = Math.max(leftLines.length, rightLines.length);
+
   return (
     <div className="space-y-3">
-      {quotes.length > 0 && (
+      {quotes.length > 0 && hasEn && (
         <p className="text-xs text-muted-foreground">
-          {wasHighlighted.size === quotes.length
-            ? `${quotes.length} quotes highlighted`
-            : `${wasHighlighted.size}/${quotes.length} quotes found in transcript`}
+          {quotes.length} quotes highlighted (original left, English right)
         </p>
       )}
-      <pre className="whitespace-pre-wrap rounded-md bg-muted/50 p-4 font-sans text-sm leading-relaxed">
-        {parts.map((p, i) =>
-          p.hit ? (
-            <mark key={i} className="rounded-sm bg-yellow-200 px-0.5">{p.text}</mark>
-          ) : (
-            <span key={i}>{p.text}</span>
-          ),
-        )}
-      </pre>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        {Array.from({ length: rows }, (_, i) => {
+          const left = leftLines[i] ?? "";
+          const right = hasEn ? (rightLines[i] ?? "—") : left;
+          const hit = quotes.some((q) => quoteHighlight(left, q)[0]);
+          return (
+            <div key={i} className="contents">
+              <div
+                className={`rounded-lg px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                  hit ? "bg-yellow-100 border-l-2 border-yellow-400" : "bg-muted/50"
+                } ${left.startsWith("Operatore") ? "md:mr-6" : "md:ml-6 bg-primary/5"}`}
+              >
+                <span className="font-semibold">{left.startsWith("Proprietario") || left.startsWith("Owner") ? left.split(":")[0] : left.split(":")[0]}</span>
+                <span>{left.substring(left.indexOf(":") + 1)}</span>
+              </div>
+              <div
+                className={`rounded-lg px-3 py-2 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap bg-muted/30 ${right.startsWith("Operator") ? "md:mr-6" : "md:ml-6"}`}
+                title={hasEn ? "English translation" : "Original (no translation stored)"}
+              >
+                {right}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -486,9 +496,9 @@ function LeadDetail({ row }: { row: LeadRow }) {
                 : undefined
             }
           />
-          <Field label="Constraint" value={r?.blocker ?? "nessuno"} />
+          <Field label="Constraint" value={r?.blocker ?? "none"} />
           <Field
-            label="Appuntamento"
+            label="Appointment"
             value={
               a?.status
                 ? `${appointmentLabel(a.status)}${a.agent_id ? ` · ${a.agent_id}` : ""}${a.slot ? ` · ${formatSlot(a.slot)}` : ""}`
@@ -499,7 +509,7 @@ function LeadDetail({ row }: { row: LeadRow }) {
             label="Ask first"
             value={
               r?.blocker
-                ? `Stato del vincolo: ${r.blocker}`
+                ? `Check constraint status: ${r.blocker}`
                 : "Confirm property data and price expectations"
             }
           />
@@ -667,7 +677,7 @@ function LeadDetail({ row }: { row: LeadRow }) {
       <div ref={transcriptRef}>
         <Section title="Transcript">
           {p?.transcript ? (
-            <TranscriptView transcript={p.transcript} evidence={r?.evidence} />
+            <TranscriptView transcript={p.transcript} transcriptEn={p.transcript_en} evidence={r?.evidence} />
           ) : (
             <p className="text-sm text-muted-foreground">
               No transcript available.
