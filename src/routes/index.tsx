@@ -185,6 +185,8 @@ function appointmentLabel(status?: string) {
 
 function formatSlot(slot?: string | null) {
   if (!slot) return null;
+  // slot ids (SLT-00042) are not dates; only ISO timestamps get formatted
+  if (!/^\d{4}-\d{2}-\d{2}/.test(slot)) return slot;
   const d = new Date(slot);
   return Number.isNaN(d.getTime()) ? slot : dateTimeFmt.format(d);
 }
@@ -479,7 +481,7 @@ function LeadDetail({ row }: { row: LeadRow }) {
           {l.address ?? "—"}, {l.city ?? "—"} · {l.phone ?? "—"}
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground/70">
-          Conversazione {row.conversation_id} · aggiornata{" "}
+          Conversation {row.conversation_id} · updated{" "}
           {dateTimeFmt.format(new Date(row.updated_at))}
         </p>
       </div>
@@ -536,7 +538,7 @@ function LeadDetail({ row }: { row: LeadRow }) {
           <Field
             label="Elevator"
             value={
-              l.elevator == null ? undefined : l.elevator ? "Sì" : "No"
+              l.elevator == null ? undefined : l.elevator ? "Yes" : "No"
             }
           />
           <Field label="Condition" value={l.condition} />
@@ -586,7 +588,7 @@ function LeadDetail({ row }: { row: LeadRow }) {
             label="Declared timeline"
             value={
               r?.timeline_declared_months != null
-                ? `${r.timeline_declared_months} mesi`
+                ? `${r.timeline_declared_months} months`
                 : undefined
             }
           />
@@ -594,7 +596,7 @@ function LeadDetail({ row }: { row: LeadRow }) {
             label="Real timeline"
             value={
               r?.timeline_real_months != null
-                ? `${r.timeline_real_months} mesi`
+                ? `${r.timeline_real_months} months`
                 : undefined
             }
           />
